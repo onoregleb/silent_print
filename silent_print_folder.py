@@ -9,7 +9,7 @@ from PIL import Image, ImageWin
 
 WINDOWS_PRINT_AVAILABLE = True
 MONITORED_FOLDER = 'photo'
-CHECK_INTERVAL_SECONDS = 10
+CHECK_INTERVAL_SECONDS = 5
 IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif']
 
 def list_files_in_folder(folder_path):
