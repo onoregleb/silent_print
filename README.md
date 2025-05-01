@@ -12,7 +12,7 @@
 4. Установите зависимости:
 
 ```bash
-pip install pywin32 pillow
+pip install -r requirements.txt
 ```
 
 ---
