@@ -6,7 +6,7 @@ import win32con
 import win32print
 import win32ui
 import win32gui
-from PIL import Image, ImageWin
+from PIL import Image, ImageWin, ImageDraw, ImageFont
 import boto3
 from botocore.exceptions import ClientError
 import tempfile
@@ -15,7 +15,8 @@ import datetime
 WINDOWS_PRINT_AVAILABLE = True
 S3_BUCKET_NAME = 'wikilect-ecom-expo-may-2025' 
 CHECK_INTERVAL_SECONDS = 1  # Проверка каждую секунду
-IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif']
+TXT_EXTENSION = '.txt'  # Расширение для текстовых файлов
+TEMPLATE_IMAGE = 'src\A5-front.png'  # Путь к шаблону изображения
 PRINTED_LOG_FILE = 'printed_files.txt'  # Файл для хранения истории печати
 
 def get_s3_client():
@@ -95,6 +96,76 @@ def download_file_from_s3(s3_client, bucket_name, file_key):
         return None
     except Exception as e:
         print(f"Непредвиденная ошибка при скачивании файла: {e}")
+        return None
+
+def read_text_from_file(file_path):
+    """Читает текст из файла."""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except UnicodeDecodeError:
+        # Если UTF-8 не работает, пробуем другие кодировки
+        try:
+            with open(file_path, 'r', encoding='cp1251') as f:
+                return f.read()
+        except Exception as e:
+            print(f"Ошибка при чтении файла с кодировкой cp1251: {e}")
+            return None
+    except Exception as e:
+        print(f"Ошибка при чтении файла: {e}")
+        return None
+
+def create_image_with_text(template_path, text_content):
+    """Создает изображение с текстом на основе шаблона."""
+    try:
+        # Открываем шаблон изображения
+        img = Image.open(template_path)
+        draw = ImageDraw.Draw(img)
+        
+        # Пытаемся загрузить шрифт, если не получается - используем стандартный
+        try:
+            # Пробуем найти шрифт Arial или другой системный шрифт
+            font_path = os.path.join(os.environ['WINDIR'], 'Fonts', 'Arial.ttf')
+            if not os.path.exists(font_path):
+                font_path = os.path.join(os.environ['WINDIR'], 'Fonts', 'arial.ttf')
+            font = ImageFont.truetype(font_path, 36)  # Размер шрифта 36
+        except Exception as e:
+            print(f"Ошибка при загрузке шрифта: {e}, используем стандартный шрифт")
+            font = ImageFont.load_default()
+        
+        # Определяем параметры текста
+        width, height = img.size
+        text_width = width * 0.8  # Используем 80% ширины изображения
+        text_x = width * 0.1  # Отступ 10% от левого края
+        text_y = height * 0.3  # Отступ 30% от верхнего края
+        
+        # Разбиваем текст на строки, чтобы он поместился на изображении
+        lines = []
+        current_line = ""
+        for word in text_content.split():
+            test_line = current_line + " " + word if current_line else word
+            # Проверяем, поместится ли строка по ширине
+            text_size = draw.textlength(test_line, font=font)
+            if text_size <= text_width:
+                current_line = test_line
+            else:
+                lines.append(current_line)
+                current_line = word
+        if current_line:
+            lines.append(current_line)
+        
+        # Рисуем текст на изображении
+        line_height = 40  # Высота строки
+        for i, line in enumerate(lines):
+            draw.text((text_x, text_y + i * line_height), line, fill="black", font=font)
+        
+        # Сохраняем изображение во временный файл
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+        temp_file.close()
+        img.save(temp_file.name)
+        return temp_file.name
+    except Exception as e:
+        print(f"Ошибка при создании изображения с текстом: {e}")
         return None
 
 def print_image_silent_gdi(image_path, printer_name=None):
@@ -211,6 +282,11 @@ def main():
         print("Установите 'pywin32' и 'Pillow'.")
         return
     
+    # Проверяем наличие шаблона изображения
+    if not os.path.exists(TEMPLATE_IMAGE):
+        print(f"Ошибка: шаблон изображения не найден по пути '{TEMPLATE_IMAGE}'")
+        return
+    
     # Инициализация S3 клиента
     s3_client = get_s3_client()
     if s3_client is None:
@@ -222,7 +298,7 @@ def main():
     print(f"Загружено {len(printed_files)} записей о ранее напечатанных файлах.")
     
     # Получаем начальное состояние бакета
-    print(f"Отслеживаем S3 бакет '{S3_BUCKET_NAME}'...")
+    print(f"Отслеживаем S3 бакет '{S3_BUCKET_NAME}' на наличие TXT файлов...")
     last_check_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=60)
     known_files = list_files_in_s3_bucket(s3_client, S3_BUCKET_NAME)
     
@@ -235,8 +311,8 @@ def main():
             
             # Проверяем новые или измененные файлы
             for key, last_modified in current_files.items():
-                # Проверяем, является ли файл изображением
-                if not any(key.lower().endswith(ext) for ext in IMAGE_EXTENSIONS):
+                # Проверяем, является ли файл текстовым
+                if not key.lower().endswith(TXT_EXTENSION):
                     continue
                 
                 # Проверяем, новый ли это файл или был ли он изменен с момента последней проверки
@@ -249,23 +325,36 @@ def main():
                     # Проверяем, был ли файл изменен за последние n секунд
                     time_diff = datetime.datetime.now(datetime.timezone.utc) - last_modified
                     if time_diff.total_seconds() <= 60:  # Проверяем файлы, измененные за последнюю минуту
-                        print(f"Новое изображение в S3: {key}")
+                        print(f"Новый текстовый файл в S3: {key}")
                         
                         # Скачиваем файл из S3
-                        temp_file_path = download_file_from_s3(s3_client, S3_BUCKET_NAME, key)
-                        if temp_file_path:
+                        temp_txt_path = download_file_from_s3(s3_client, S3_BUCKET_NAME, key)
+                        if temp_txt_path:
                             try:
-                                # Печатаем изображение
-                                if print_image_silent_gdi(temp_file_path):
-                                    # Сохраняем информацию о печати
-                                    save_printed_file(key)
-                                    printed_files.add(key)
+                                # Читаем текст из файла
+                                text_content = read_text_from_file(temp_txt_path)
+                                if text_content is not None:
+                                    # Создаем изображение с текстом на основе шаблона
+                                    image_with_text_path = create_image_with_text(TEMPLATE_IMAGE, text_content)
+                                    if image_with_text_path:
+                                        try:
+                                            # Печатаем изображение
+                                            if print_image_silent_gdi(image_with_text_path):
+                                                # Сохраняем информацию о печати
+                                                save_printed_file(key)
+                                                printed_files.add(key)
+                                        finally:
+                                            # Удаляем временный файл с изображением
+                                            try:
+                                                os.unlink(image_with_text_path)
+                                            except Exception as e:
+                                                print(f"Ошибка при удалении временного файла изображения: {e}")
                             finally:
-                                # Удаляем временный файл
+                                # Удаляем временный текстовый файл
                                 try:
-                                    os.unlink(temp_file_path)
+                                    os.unlink(temp_txt_path)
                                 except Exception as e:
-                                    print(f"Ошибка при удалении временного файла: {e}")
+                                    print(f"Ошибка при удалении временного текстового файла: {e}")
             
             # Обновляем известные файлы
             known_files = current_files
