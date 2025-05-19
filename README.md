@@ -18,6 +18,20 @@ pip install -r requirements.txt
 
 ## Запуск
 
+### Установка AWS CLI для Windows
+
+1. Скачайте инсталлятор AWS CLI для Windows с официального сайта AWS или по ссылке: https://awscli.amazonaws.com/AWSCLIV2.msi
+
+2. Запустите скачанный файл AWSCLIV2.msi и следуйте инструкциям мастера установки.
+
+3. После установки откройте новое окно командной строки и проверьте установку командой:
+
+```bash
+aws --version
+```
+
+Дополнительная информация об установке AWS CLI для Windows доступна в [документации Yandex Cloud](https://yandex.cloud/ru/docs/storage/quickstart/quickstart-aws-cli#windows_1).
+
 ### Печать из Yandex Cloud S3 бакета
 
 1. Настройте AWS CLI для работы с Yandex Cloud:
@@ -74,7 +88,5 @@ aws --endpoint-url=https://storage.yandexcloud.net s3 cp ./photo/image.png s3://
 2. Нажмите **Параметры печати по умолчанию**
 3. Установите цветной режим
 4. Сохраните изменения
-
----
 
 
