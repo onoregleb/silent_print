@@ -1,6 +1,6 @@
-# AutoPrint: Автоматическая печать изображений из папки (Windows)
+# AutoPrint: Автоматическая печать изображений из S3 (Windows)
 
-Этот скрипт автоматически отслеживает указанную папку (`photo`) и отправляет новые изображения на печать на принтер Windows, используя GDI (Graphics Device Interface). Поддерживаются форматы: `.jpg`, `.jpeg`, `.png`, `.gif`.
+Этот скрипт автоматически отслеживает S3 бакет и отправляет новые изображения на печать на принтер Windows, используя GDI (Graphics Device Interface). Поддерживаются форматы: `.jpg`, `.jpeg`, `.png`, `.gif`.
 
 ---
 
@@ -18,16 +18,58 @@ pip install -r requirements.txt
 
 ## Запуск
 
-1. Поместите изображения в папку `photo` (она будет создана при первом запуске).
-2. Запустите скрипт:
+### Установка AWS CLI для Windows
+
+1. Скачайте инсталлятор AWS CLI для Windows с официального сайта AWS или по ссылке: https://awscli.amazonaws.com/AWSCLIV2.msi
+
+2. Запустите скачанный файл AWSCLIV2.msi и следуйте инструкциям мастера установки.
+
+3. После установки откройте новое окно командной строки и проверьте установку командой:
 
 ```bash
-python silent_print_folder.py
+aws --version
 ```
 
-3. Скрипт будет каждые 5 секунд проверять наличие новых изображений и печатать их на принтер по умолчанию.
+Дополнительная информация об установке AWS CLI для Windows доступна в [документации Yandex Cloud](https://yandex.cloud/ru/docs/storage/quickstart/quickstart-aws-cli#windows_1).
 
-Чтобы остановить скрипт — нажмите `Ctrl + C`.
+### Печать из Yandex Cloud S3 бакета
+
+1. Настройте AWS CLI для работы с Yandex Cloud:
+
+```bash
+aws configure set aws_access_key_id YOUR_YANDEX_ACCESS_KEY_ID
+aws configure set aws_secret_access_key YOUR_YANDEX_SECRET_ACCESS_KEY
+aws configure set default.region ru-central1
+aws configure set default.output json
+```
+
+2. Отредактируйте файл `silent_print_s3.py` и укажите имя вашего S3 бакета в Yandex Cloud в переменной `S3_BUCKET_NAME`.
+
+3. Запустите скрипт:
+
+```bash
+python silent_print_s3.py
+```
+
+4. Скрипт будет каждую секунду проверять наличие новых изображений в Yandex Cloud S3 бакете и печатать их на принтер по умолчанию.
+
+5. Информация о напечатанных файлах сохраняется в файле `printed_files.txt`.
+
+### Загрузка файлов в Yandex Cloud S3
+
+Для загрузки файлов в бакет используйте AWS CLI с указанием endpoint-url:
+
+```bash
+aws --endpoint-url=https://storage.yandexcloud.net s3 cp ./путь/к/файлу.png s3://имя-бакета/имя-файла.png
+```
+
+Например, для загрузки файла из папки photo:
+
+```bash
+aws --endpoint-url=https://storage.yandexcloud.net s3 cp ./photo/image.png s3://wikilect-ecom-expo-may-2025/image.png
+```
+
+Чтобы остановить любой из скриптов — нажмите `Ctrl + C`.
 
 ---
 
@@ -46,7 +88,5 @@ python silent_print_folder.py
 2. Нажмите **Параметры печати по умолчанию**
 3. Установите цветной режим
 4. Сохраните изменения
-
----
 
 
