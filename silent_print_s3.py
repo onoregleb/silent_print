@@ -520,9 +520,15 @@ def create_image_with_text(template_path, text_content):
         print(f"Ошибка при создании изображения с текстом: {e}")
         return None
 
-def print_image_silent_gdi(image_path, printer_name=None):
-    """Тихая печать изображения на весь лист (без полей по возможности).
-    Обрезает и масштабирует изображение под printable area принтера."""
+def print_image_silent_gdi(image_path, printer_name=None, paper_size='A5'):
+    """Тихая печать изображения на лист указанного формата.
+    Обрезает и масштабирует изображение под printable area принтера.
+    
+    Аргументы:
+        image_path: путь к изображению для печати
+        printer_name: имя принтера (если None, будет использован принтер по умолчанию)
+        paper_size: формат бумаги ('A5' по умолчанию)
+    """
     if not sys.platform.startswith('win32'):
         print("Печать доступна только на Windows.")
         return False
@@ -556,6 +562,20 @@ def print_image_silent_gdi(image_path, printer_name=None):
         print(f"Не удалось открыть принтер '{printer_name}': {e}")
         img.close()
         return False
+        
+    # Настраиваем формат бумаги, если указан
+    if paper_size == 'A5':
+        try:
+            # Получаем текущие настройки принтера
+            devmode = win32print.GetPrinter(hprinter, 2).get('pDevMode')
+            if devmode:
+                # Устанавливаем формат бумаги A5 (код 11)
+                devmode.PaperSize = 11  # DMPAPER_A5
+                win32print.SetPrinter(hprinter, 2, None, devmode)
+                print(f"Установлен формат бумаги A5 для принтера '{printer_name}'")
+        except Exception as e:
+            print(f"Не удалось установить формат бумаги A5: {e}")
+            # Продолжаем печать с текущими настройками
     success = False
     hdc = mem_dc = bitmap = None
     try:
