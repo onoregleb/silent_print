@@ -1,12 +1,7 @@
 import time
 import os
 import sys
-import json
-import win32con
-import win32print
-import win32ui
-import win32gui
-from PIL import Image, ImageWin, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 import boto3
 from botocore.exceptions import ClientError
 import tempfile
@@ -145,53 +140,54 @@ def create_image_with_text(template_path, text_content):
         img = Image.open(template_path)
         draw = ImageDraw.Draw(img)
         
-
-        # Используем указанный пользователем шрифт Noto Sans для основного текста
-        custom_font_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src', 'font', 'NotoSans-Regular.ttf')
+        # Используем шрифты Noto Sans и Noto Color Emoji для поддержки кириллицы и эмодзи
+        try:
+            # Используем указанный пользователем шрифт Noto Sans для основного текста
+            custom_font_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src', 'font', 'NotoSans-Regular.ttf')
             
-        # Проверяем наличие шрифтов для эмодзи
-        font_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src', 'font')
-        emoji_font_candidates = [
-            os.path.join(font_dir, 'NotoColorEmoji-Regular.ttf'),  # Основной шрифт для эмодзи
-            os.path.join(font_dir, 'NotoEmoji-Regular.ttf'),       # Альтернативный шрифт для эмодзи
-            os.path.join(os.environ['WINDIR'], 'Fonts', 'seguiemj.ttf')  # Windows Segoe UI Emoji
-        ]
+            # Проверяем наличие шрифтов для эмодзи
+            font_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src', 'font')
+            emoji_font_candidates = [
+                os.path.join(font_dir, 'NotoColorEmoji-Regular.ttf'),  # Основной шрифт для эмодзи
+                os.path.join(font_dir, 'NotoEmoji-Regular.ttf'),       # Альтернативный шрифт для эмодзи
+                os.path.join(os.environ['WINDIR'], 'Fonts', 'seguiemj.ttf')  # Windows Segoe UI Emoji
+            ]
             
-         # Проверяем наличие шрифтов для эмодзи
-        emoji_font_path = None
-        for candidate in emoji_font_candidates:
-            if os.path.exists(candidate):
-                emoji_font_path = candidate
-                emoji_font_exists = True
-                print(f"Найден шрифт для эмодзи: {emoji_font_path}")
-                break
-        else:
-            emoji_font_exists = False
+            # Проверяем наличие шрифтов для эмодзи
+            emoji_font_path = None
+            for candidate in emoji_font_candidates:
+                if os.path.exists(candidate):
+                    emoji_font_path = candidate
+                    emoji_font_exists = True
+                    print(f"Найден шрифт для эмодзи: {emoji_font_path}")
+                    break
+            else:
+                emoji_font_exists = False
             
-        if os.path.exists(custom_font_path):
-            # Используем шрифт Noto Sans для основного текста
-            font = ImageFont.truetype(custom_font_path, 24)
-            print(f"Используется шрифт Noto Sans: {custom_font_path}")
+            if os.path.exists(custom_font_path):
+                # Используем шрифт Noto Sans для основного текста
+                font = ImageFont.truetype(custom_font_path, 24)
+                print(f"Используется шрифт Noto Sans: {custom_font_path}")
                 
-            # Если доступен шрифт для эмодзи, загрузим его
-            if emoji_font_exists:
-                try:
-                    # Используем увеличенный размер для лучшего отображения эмодзи
+                # Если доступен шрифт для эмодзи, загрузим его
+                if emoji_font_exists:
                     try:
-                        # Загружаем шрифт с embedded_color=True для поддержки цветных эмодзи
-                        emoji_font = ImageFont.truetype(emoji_font_path, 36, layout_engine=ImageFont.LAYOUT_RAQM, embedded_color=True)
-                    except (TypeError, AttributeError):
+                        # Используем увеличенный размер для лучшего отображения эмодзи
                         try:
-                            # Пробуем без layout_engine
-                            emoji_font = ImageFont.truetype(emoji_font_path, 36, embedded_color=True)
+                            # Загружаем шрифт с embedded_color=True для поддержки цветных эмодзи
+                            emoji_font = ImageFont.truetype(emoji_font_path, 36, layout_engine=ImageFont.LAYOUT_RAQM, embedded_color=True)
                         except (TypeError, AttributeError):
-                            # Если embedded_color не поддерживается
-                            emoji_font = ImageFont.truetype(emoji_font_path, 36)
-                    emoji_name = os.path.basename(emoji_font_path)
-                    print(f"Используется шрифт {emoji_name} для эмодзи: {emoji_font_path}")
-                except Exception as e:
-                    print(f"Ошибка при загрузке шрифта для эмодзи: {e}")
-                    emoji_font = None
+                            try:
+                                # Пробуем без layout_engine
+                                emoji_font = ImageFont.truetype(emoji_font_path, 36, embedded_color=True)
+                            except (TypeError, AttributeError):
+                                # Если embedded_color не поддерживается
+                                emoji_font = ImageFont.truetype(emoji_font_path, 36)
+                        emoji_name = os.path.basename(emoji_font_path)
+                        print(f"Используется шрифт {emoji_name} для эмодзи: {emoji_font_path}")
+                    except Exception as e:
+                        print(f"Ошибка при загрузке шрифта для эмодзи: {e}")
+                        emoji_font = None
                 else:
                     emoji_font = None
                     print("Не найден подходящий шрифт для эмодзи, эмодзи могут отображаться некорректно")
@@ -205,8 +201,6 @@ def create_image_with_text(template_path, text_content):
                     'seguiemj.ttf',  # Segoe UI Emoji (отличная поддержка эмодзи)
                     'seguisym.ttf',  # Segoe UI Symbol (хорошая поддержка эмодзи и кириллицы)
                     'segoeui.ttf',   # Segoe UI (хорошая поддержка кириллицы)
-                    'arial.ttf',     # Arial (хорошая поддержка кириллицы)
-                    'times.ttf'     # Times New Roman (хорошая поддержка кириллицы)
                 ]
                 
                 font_path = None
@@ -215,9 +209,29 @@ def create_image_with_text(template_path, text_content):
                     if os.path.exists(candidate_path):
                         font_path = candidate_path
                         break
-
-        # Определяем параметры текста согласно указанным координатам
-        # Координаты: Top Left (52,140) Bottom Right (776,960)
+                
+                if font_path:
+                    font = ImageFont.truetype(font_path, 24)
+                    print(f"Используется резервный шрифт: {font_path}")
+                else:
+                    # Если ни один шрифт не найден, используем стандартный
+                    raise Exception("Не найден подходящий шрифт")
+        except Exception as e:
+            print(f"Ошибка при загрузке шрифта: {e}, пробуем запасной вариант")
+            try:
+                # Пробуем использовать Arial, который точно поддерживает кириллицу
+                arial_path = os.path.join(os.environ['WINDIR'], 'Fonts', 'arial.ttf')
+                if os.path.exists(arial_path):
+                    font = ImageFont.truetype(arial_path, 24)
+                    print(f"Используется запасной шрифт: {arial_path}")
+                else:
+                    # Если Arial не найден, используем стандартный шрифт
+                    font = ImageFont.load_default()
+                    print("Используется стандартный шрифт (может не поддерживать кириллицу)")
+            except Exception as e2:
+                print(f"Ошибка при загрузке запасного шрифта: {e2}, используем стандартный шрифт")
+                font = ImageFont.load_default()
+        
         text_x = 52  # Левая граница
         text_y = 140  # Верхняя граница
         text_width = 776 - 52  # Ширина текстовой области
@@ -229,7 +243,26 @@ def create_image_with_text(template_path, text_content):
             processed_text = text_content
             emojized = False
             
-
+            # Пробуем с разными вариантами синтаксиса для эмодзи
+            try:
+                processed_text = emoji.emojize(text_content, language='alias')
+                if processed_text != text_content:
+                    text_content = processed_text
+                    emojized = True
+                    print("Эмодзи успешно преобразованы с помощью alias (:smile:)")
+            except Exception as e:
+                print(f"Ошибка при преобразовании эмодзи с alias: {e}")
+            
+            # 2. Со стандартным языком (длинные коды: :grinning_face:)
+            try:
+                processed_text = emoji.emojize(text_content)
+                if processed_text != text_content:
+                    text_content = processed_text
+                    emojized = True
+                    print("Эмодзи успешно преобразованы со стандартными кодами (:grinning_face:)")
+            except Exception as e:
+                print(f"Ошибка при преобразовании эмодзи со стандартными кодами: {e}")
+            
             # 3. Пробуем все варианты синтаксиса сразу
             try:
                 if not emojized:
@@ -317,10 +350,8 @@ def create_image_with_text(template_path, text_content):
                     # Сначала выявляем все эмодзи и их позиции
                     for char_idx, char in enumerate(line):
                         # Используем библиотеку emoji для более точного определения эмодзи
-                        # Проверка на эмодзи по диапазону Unicode и с помощью библиотеки emoji
                         is_emoji = False
                         try:
-                            # Проверка, является ли символ эмодзи
                             # 1. Проверка по Unicode диапазонам для большинства эмодзи
                             if len(char) == 1:  # Обрабатываем только одиночные символы
                                 # Основные диапазоны эмодзи в Unicode
@@ -367,10 +398,7 @@ def create_image_with_text(template_path, text_content):
                         try:
                             # Определяем ширину символа эмодзи
                             emoji_width = draw.textlength(char, font=emoji_font)
-                            # Затемняем область под эмодзи (опционально)
-                            # draw.rectangle([(text_x + char_width, y_position), 
-                            #                (text_x + char_width + emoji_width, y_position + line_height)], 
-                            #                fill="white")
+
                         except Exception:
                             emoji_width = draw.textlength("😀", font=emoji_font)  # Примерная ширина
                         
