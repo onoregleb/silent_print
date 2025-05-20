@@ -331,27 +331,17 @@ def create_image_with_text(template_path, text_content):
             if y_position + line_height <= text_y + text_height:
                 # Улучшенный рендеринг текста с эмодзи
                 if 'emoji_font' in locals() and emoji_font is not None:
-                    # Сначала рисуем обычный текст с основным шрифтом
-                    try:
-                        draw.text((text_x, y_position), line, fill="black", font=font, embedded=True, layout_engine=ImageFont.LAYOUT_RAQM)
-                    except (TypeError, AttributeError):
-                        try:
-                            draw.text((text_x, y_position), line, fill="black", font=font, layout_engine=ImageFont.LAYOUT_RAQM)
-                        except (TypeError, AttributeError):
-                            try:
-                                draw.text((text_x, y_position), line, fill="black", font=font, embedded=True)
-                            except TypeError:
-                                draw.text((text_x, y_position), line, fill="black", font=font)
-                    
-                    # Более точная идентификация эмодзи с помощью библиотеки emoji
-                    emoji_positions = []
-                    
                     # Сначала выявляем все эмодзи и их позиции
+                    emoji_positions = []
+                    # Временная строка для отрисовки (с замененными эмодзи на пробелы)
+                    line_without_emoji = ""
+                    
+                    # Выявляем все эмодзи и их позиции
                     for char_idx, char in enumerate(line):
                         # Используем библиотеку emoji для более точного определения эмодзи
                         is_emoji = False
                         try:
-                            # 1. Проверка по Unicode диапазонам для большинства эмодзи
+                            # Проверка по Unicode диапазонам для большинства эмодзи
                             if len(char) == 1:  # Обрабатываем только одиночные символы
                                 # Основные диапазоны эмодзи в Unicode
                                 emoji_ranges = [
@@ -368,11 +358,11 @@ def create_image_with_text(template_path, text_content):
                                         is_emoji = True
                                         break
                             
-                            # 2. Используем библиотеку emoji для проверки
+                            # Используем библиотеку emoji для проверки
                             if hasattr(emoji, 'is_emoji') and emoji.is_emoji(char):
                                 is_emoji = True
                                 
-                            # 3. Дополнительная проверка для эмодзи с модификаторами (составных эмодзи)
+                            # Дополнительная проверка для эмодзи с модификаторами (составных эмодзи)
                             if len(char) > 1 and any(0x1F000 <= ord(c) <= 0x1FFFF for c in char):
                                 is_emoji = True
                         except Exception as e:
@@ -384,12 +374,29 @@ def create_image_with_text(template_path, text_content):
                                 pass
                         
                         if is_emoji:
-                            emoji_positions.append(char_idx)
-                            print(f"Обнаружен эмодзи: {repr(char)} на позиции {char_idx}")
+                            emoji_positions.append((char_idx, char))
+                            # Добавляем пробел вместо эмодзи
+                            line_without_emoji += " "
+                        else:
+                            # Добавляем обычный символ
+                            line_without_emoji += char
+                    
+                    # Рисуем текст без эмодзи (с пробелами вместо эмодзи)
+                    try:
+                        draw.text((text_x, y_position), line_without_emoji, fill="black", font=font, embedded=True, layout_engine=ImageFont.LAYOUT_RAQM)
+                    except (TypeError, AttributeError):
+                        try:
+                            draw.text((text_x, y_position), line_without_emoji, fill="black", font=font, layout_engine=ImageFont.LAYOUT_RAQM)
+                        except (TypeError, AttributeError):
+                            try:
+                                draw.text((text_x, y_position), line_without_emoji, fill="black", font=font, embedded=True)
+                            except TypeError:
+                                draw.text((text_x, y_position), line_without_emoji, fill="black", font=font)
+                    
+                    # Теперь рисуем эмодзи поверх текста, используя найденные позиции
                     
                     # Теперь отрисовываем каждый эмодзи с помощью специального шрифта
-                    for char_idx in emoji_positions:
-                        char = line[char_idx]
+                    for char_idx, char in emoji_positions:
                         # Вычисляем позицию символа в строке
                         char_width = draw.textlength(line[:char_idx], font=font)
                         
