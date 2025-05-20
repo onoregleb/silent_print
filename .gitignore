@@ -2,3 +2,4 @@ shell.py
 print_S3.py
 .venv/
 .idea/
+preview_print_s3.py
