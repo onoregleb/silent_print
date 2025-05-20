@@ -7,7 +7,6 @@ from botocore.exceptions import ClientError
 import tempfile
 import datetime
 import emoji
-import platform  # Для определения операционной системы
 
 WINDOWS_PRINT_AVAILABLE = True
 S3_BUCKET_NAME = 'wikilect-ecom-expo-may-2025' 
@@ -439,8 +438,8 @@ def create_image_with_text(template_path, text_content):
                                     resized_width = int(emoji_size * ratio)
                                     emoji_img = emoji_img.resize((resized_width, target_height), Image.LANCZOS)
                                     
-                                    # Накладываем на основное изображение
-                                    img.paste(emoji_img, (text_x + int(char_width), y_position), emoji_img)
+                                    # Накладываем на основное изображение со смещением на 3 пикселя влево от текущей позиции
+                                    img.paste(emoji_img, (text_x + int(char_width) - 7, y_position), emoji_img)
                                     print(f"Отрисован эмодзи {repr(char)} методом композиции с полной обработкой")
                                 else:
                                     # Метод 2: Если в первом методе не получилось - пробуем другой подход с Windows Emoji
@@ -479,23 +478,23 @@ def create_image_with_text(template_path, text_content):
                                                         # Стандартный метод
                                                         temp_emoji_draw.text((5, 5), char, font=win_emoji_font)
                                                 
-                                            # Накладываем временное изображение на основное
-                                            img.paste(temp_emoji_img, (text_x + int(char_width), y_position), temp_emoji_img)
+                                            # Накладываем временное изображение на основное со смещением на 7 пикселей влево от текущей позиции
+                                            img.paste(temp_emoji_img, (text_x + int(char_width) - 7, y_position), temp_emoji_img)
                                             print(f"Отрисован цветной эмодзи {repr(char)} с использованием Windows Emoji шрифта")
                                         else:
                                             # Запасной вариант - просто пробуем обычную отрисовку
                                             try:
-                                                draw.text((text_x + char_width, y_position), char, font=win_emoji_font, fill=(0, 0, 0, 255), layout_engine=ImageFont.LAYOUT_RAQM)
+                                                draw.text((text_x + char_width - 7, y_position), char, font=win_emoji_font, fill=(0, 0, 0, 255), layout_engine=ImageFont.LAYOUT_RAQM)
                                             except (TypeError, AttributeError):
-                                                draw.text((text_x + char_width, y_position), char, font=win_emoji_font, fill=(0, 0, 0, 255))
+                                                draw.text((text_x + char_width - 7, y_position), char, font=win_emoji_font, fill=(0, 0, 0, 255))
                                             print(f"Отрисован эмодзи {repr(char)} прямым методом")
                                     except Exception as e:
                                         print(f"Ошибка при отрисовке Windows Emoji: {e}")
-                                        draw.text((text_x + char_width, y_position), char, font=font, fill=(0, 0, 0, 255))
+                                        draw.text((text_x + char_width - 7, y_position), char, font=font, fill=(0, 0, 0, 255))
                                         print(f"Отрисован эмодзи {repr(char)} базовым шрифтом текста")
                             except Exception as e:
                                 print(f"Ошибка при первичной отрисовке эмодзи: {e}, пробуем стандартный метод")
-                                draw.text((text_x + char_width, y_position), char, font=font, fill=(0, 0, 0, 255))
+                                draw.text((text_x + char_width - 7, y_position), char, font=font, fill=(0, 0, 0, 255))
                                 print(f"Отрисован эмодзи {repr(char)} стандартным методом")
                         except Exception as e:
                             print(f"Ошибка при отрисовке эмодзи {repr(char)}: {e}")
@@ -576,8 +575,48 @@ def main():
     
     # Получаем начальное состояние бакета
     print(f"Отслеживаем S3 бакет '{S3_BUCKET_NAME}' на наличие TXT файлов...")
-    last_check_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=60)
-    known_files = list_files_in_s3_bucket(s3_client, S3_BUCKET_NAME)
+    current_files = list_files_in_s3_bucket(s3_client, S3_BUCKET_NAME)
+    
+    # При запуске обрабатываем все ненапечатанные файлы
+    print("Проверка всех файлов в S3 бакете на наличие необработанных...")
+    for key, last_modified in current_files.items():
+        # Проверяем, является ли файл текстовым
+        if not key.lower().endswith(TXT_EXTENSION):
+            continue
+            
+        # Проверяем, был ли файл уже обработан
+        if key not in printed_files:
+            print(f"Найден необработанный файл в S3: {key}")
+            
+            # Скачиваем файл из S3
+            temp_txt_path = download_file_from_s3(s3_client, S3_BUCKET_NAME, key)
+            if temp_txt_path:
+                try:
+                    # Читаем текст из файла
+                    text_content = read_text_from_file(temp_txt_path)
+                    if text_content is not None:
+                        # Создаем изображение с текстом на основе шаблона
+                        image_with_text = create_image_with_text(TEMPLATE_IMAGE, text_content)
+                        if image_with_text:
+                            # Сохраняем предпросмотр и открываем его
+                            preview_path = save_preview_image(image_with_text, key)
+                            if preview_path:
+                                # Сохраняем информацию об обработке
+                                save_printed_file(key)
+                                printed_files.add(key)
+                                print(f"Файл {key} успешно обработан")
+                finally:
+                    # Удаляем временный текстовый файл
+                    try:
+                        os.unlink(temp_txt_path)
+                    except Exception as e:
+                        print(f"Ошибка при удалении временного текстового файла: {e}")
+    
+    print("Проверка завершена, переходим в режим мониторинга новых файлов")
+    
+    # Сохраняем текущее состояние бакета
+    known_files = current_files
+    last_check_time = datetime.datetime.now(datetime.timezone.utc)
     
     try:
         while True:
@@ -599,29 +638,29 @@ def main():
                 
                 # Если файл новый или изменен и не был обработан ранее
                 if (is_new or is_modified) and is_not_printed:
-                    # Проверяем, был ли файл изменен за последние n секунд
-                    time_diff = datetime.datetime.now(datetime.timezone.utc) - last_modified
-                    if time_diff.total_seconds() <= 60:  # Проверяем файлы, измененные за последнюю минуту
-                        print(f"Новый текстовый файл в S3: {key}")
-                        
-                        # Скачиваем файл из S3
-                        temp_txt_path = download_file_from_s3(s3_client, S3_BUCKET_NAME, key)
-                        if temp_txt_path:
-                            try:
-                                # Читаем текст из файла
-                                text_content = read_text_from_file(temp_txt_path)
-                                if text_content is not None:
-                                    # Создаем изображение с текстом на основе шаблона
-                                    image_with_text = create_image_with_text(TEMPLATE_IMAGE, text_content)
-                                    if image_with_text:
-                                        # Сохраняем предпросмотр и открываем его
-                                        preview_path = save_preview_image(image_with_text, key)
-                                        if preview_path:
-                                            # Сохраняем информацию об обработке
-                                            save_printed_file(key)
-                                            printed_files.add(key)
-                            finally:
-                                # Удаляем временный текстовый файл
+                    print(f"Новый текстовый файл в S3: {key}")
+                    
+                    # Скачиваем файл из S3
+                    temp_txt_path = download_file_from_s3(s3_client, S3_BUCKET_NAME, key)
+                    if temp_txt_path:
+                        try:
+                            # Читаем текст из файла
+                            text_content = read_text_from_file(temp_txt_path)
+                            if text_content is not None:
+                                # Создаем изображение с текстом на основе шаблона
+                                image_with_text = create_image_with_text(TEMPLATE_IMAGE, text_content)
+                                if image_with_text:
+                                    # Сохраняем предпросмотр и открываем его
+                                    preview_path = save_preview_image(image_with_text, key)
+                                    if preview_path:
+                                        # Сохраняем информацию об обработке
+                                        save_printed_file(key)
+                                        printed_files.add(key)
+                        except Exception as e:
+                            print(f"Ошибка при обработке файла {key}: {e}")
+                        finally:
+                            # Удаляем временный текстовый файл
+                            if temp_txt_path and os.path.exists(temp_txt_path):
                                 try:
                                     os.unlink(temp_txt_path)
                                 except Exception as e:
