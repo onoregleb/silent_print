@@ -455,18 +455,18 @@ def create_image_with_text(template_path, text_content):
                                             # Рисуем цветной эмодзи на временном изображении
                                             try:
                                                 # Цветные эмодзи с embedded=True и embedded_color=True
-                                                temp_emoji_draw.text((5, 5), char, font=win_emoji_font, embedded=True, embedded_color=True)
+                                                temp_emoji_draw.text((int(5), int(5)), char, font=win_emoji_font, embedded=True, embedded_color=True)
                                             except (TypeError, AttributeError):
                                                 try: 
                                                     # Пробуем только с embedded_color
-                                                    temp_emoji_draw.text((5, 5), char, font=win_emoji_font, embedded_color=True)
+                                                    temp_emoji_draw.text((int(5), int(5)), char, font=win_emoji_font, embedded_color=True)
                                                 except (TypeError, AttributeError):
                                                     try:
                                                         # Пробуем с RAQM без цвета
-                                                        temp_emoji_draw.text((5, 5), char, font=win_emoji_font, layout_engine=ImageFont.LAYOUT_RAQM)
+                                                        temp_emoji_draw.text((int(5), int(5)), char, font=win_emoji_font, layout_engine=ImageFont.LAYOUT_RAQM)
                                                     except (TypeError, AttributeError):
                                                         # Стандартный метод
-                                                        temp_emoji_draw.text((5, 5), char, font=win_emoji_font)
+                                                        temp_emoji_draw.text((int(5), int(5)), char, font=win_emoji_font)
                                                 
                                             # Накладываем временное изображение на основное со смещением на 7 пикселей влево от текущей позиции
                                             img.paste(temp_emoji_img, (text_x + int(char_width) - 7, y_position), temp_emoji_img)
